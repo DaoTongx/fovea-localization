@@ -1,0 +1,141 @@
+7.7s 1 0.00s - Debugger warning: It seems that frozen modules are being used, which may
+7.7s 2 0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+7.7s 3 0.00s - to python to disable frozen modules.
+7.7s 4 0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+8.4s 5 0.00s - Debugger warning: It seems that frozen modules are being used, which may
+8.4s 6 0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+8.4s 7 0.00s - to python to disable frozen modules.
+8.4s 8 0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+26.7s 9 torch 2.11.0+cu128 | device: cuda | SMOKE: False
+26.7s 10 GPU: Tesla T4
+26.8s 11 DATA ROOT: /kaggle/input/competitions/2026task3/detection
+30.9s 12 train=80  test=20
+30.9s 13 w     h
+30.9s 14 2992  2000    75
+30.9s 15 1956  1934     5
+31.1s 16 归一化 X: min 0.365  max 0.617  mean 0.494
+31.1s 17 归一化 Y: min 0.465  max 0.591  mean 0.529
+31.1s 18 像素 X : min 723.7  max 1794.6  std 202.5
+31.1s 19 像素 Y : min 930.2  max 1182.2  std 44.1
+31.1s 20 (0,0) 标注数量: 0
+31.1s 21 常数预测（训练集均值）的 RMSE 基线: 146.6 px
+32.0s 22 标注框中心与 GT 坐标的平均偏差: 2.4 px
+32.7s 23 letterbox / augment / dataset 定义完成
+33.2s 24 Downloading: "https://download.pytorch.org/models/resnet18-f37072fd.pth" to /root/.cache/torch/hub/checkpoints/resnet18-f37072fd.pth
+33.2s 25 0%|          | 0.00/44.7M [00:00<?, ?B/s]
+33.3s 26 0%|          | 0.00/44.7M [00:00<?, ?B/s] 24%|██▍       | 10.8M/44.7M [00:00<00:00, 112MB/s]
+33.4s 27 24%|██▍       | 10.8M/44.7M [00:00<00:00, 112MB/s] 80%|████████  | 35.9M/44.7M [00:00<00:00, 201MB/s]
+33.4s 28 80%|████████  | 35.9M/44.7M [00:00<00:00, 201MB/s]100%|██████████| 44.7M/44.7M [00:00<00:00, 199MB/s]
+33.5s 29 100%|██████████| 44.7M/44.7M [00:00<00:00, 199MB/s]
+33.5s 30 
+33.5s 31 
+33.5s 32 参数量: 11.86M
+38.6s 33 缓存完成: train 80 张, test 20 张
+38.6s 34 
+38.6s 35 ===== mode = reg =====
+38.6s 36 fold 0  train=64 val=16
+45.9s 37 ep   1/80  loss 0.0956  val RMSE  113.20  best  113.20
+71.4s 38 ep  16/80  loss 0.0689  val RMSE  109.61  best   89.79
+99.0s 39 ep  32/80  loss 0.0419  val RMSE   81.98  best   73.38
+126.5s 40 ep  48/80  loss 0.0373  val RMSE   66.15  best   66.15
+154.6s 41 ep  64/80  loss 0.0318  val RMSE   59.19  best   56.17
+183.2s 42 ep  80/80  loss 0.0283  val RMSE   61.48  best   56.17
+184.1s 43 fold 0  best val RMSE = 56.17 px  (145.5s)
+184.1s 44 fold 1  train=64 val=16
+185.9s 45 ep   1/80  loss 0.1305  val RMSE  407.78  best  407.78
+212.2s 46 ep  16/80  loss 0.0584  val RMSE   63.25  best   61.40
+240.1s 47 ep  32/80  loss 0.0405  val RMSE  102.06  best   55.00
+268.2s 48 ep  48/80  loss 0.0382  val RMSE   57.07  best   47.39
+296.1s 49 ep  64/80  loss 0.0299  val RMSE   56.37  best   45.37
+324.3s 50 ep  80/80  loss 0.0323  val RMSE   50.18  best   45.37
+324.9s 51 fold 1  best val RMSE = 45.37 px  (140.7s)
+324.9s 52 fold 2  train=64 val=16
+326.8s 53 ep   1/80  loss 0.1196  val RMSE  183.69  best  183.69
+353.0s 54 ep  16/80  loss 0.0628  val RMSE   93.51  best   88.65
+380.9s 55 ep  32/80  loss 0.0535  val RMSE   58.78  best   58.78
+408.8s 56 ep  48/80  loss 0.0317  val RMSE   45.54  best   45.54
+436.7s 57 ep  64/80  loss 0.0315  val RMSE   43.68  best   41.34
+464.8s 58 ep  80/80  loss 0.0273  val RMSE   45.50  best   41.34
+465.5s 59 fold 2  best val RMSE = 41.34 px  (140.5s)
+465.5s 60 fold 3  train=64 val=16
+467.2s 61 ep   1/80  loss 0.1000  val RMSE  212.51  best  212.51
+493.4s 62 ep  16/80  loss 0.0646  val RMSE   72.92  best   72.92
+521.3s 63 ep  32/80  loss 0.0545  val RMSE   63.06  best   63.06
+548.9s 64 ep  48/80  loss 0.0426  val RMSE   55.76  best   50.16
+576.7s 65 ep  64/80  loss 0.0350  val RMSE   45.21  best   45.21
+604.4s 66 ep  80/80  loss 0.0362  val RMSE   45.84  best   44.78
+604.9s 67 fold 3  best val RMSE = 44.78 px  (139.4s)
+604.9s 68 fold 4  train=64 val=16
+607.1s 69 ep   1/80  loss 0.0995  val RMSE  267.67  best  267.67
+633.5s 70 ep  16/80  loss 0.0671  val RMSE  120.81  best  120.81
+661.6s 71 ep  32/80  loss 0.0482  val RMSE  103.90  best   92.91
+689.3s 72 ep  48/80  loss 0.0421  val RMSE   96.21  best   83.69
+717.4s 73 ep  64/80  loss 0.0357  val RMSE   71.25  best   71.25
+745.4s 74 ep  80/80  loss 0.0324  val RMSE   72.48  best   70.50
+746.0s 75 fold 4  best val RMSE = 70.50 px  (141.0s)
+746.0s 76 [reg] CV RMSE = 52.72 px   folds = 56.17, 45.37, 41.34, 44.78, 70.50
+746.0s 77 
+746.0s 78 ===== mode = heat =====
+746.0s 79 fold 0  train=64 val=16
+748.6s 80 ep   1/80  loss 0.4030  val RMSE  756.28  best  756.28
+775.4s 81 ep  16/80  loss 0.3863  val RMSE  552.63  best  300.42
+804.5s 82 ep  32/80  loss 0.0430  val RMSE  164.01  best   94.60
+833.2s 83 ep  48/80  loss 0.0181  val RMSE   24.93  best   21.09
+862.0s 84 ep  64/80  loss 0.0131  val RMSE   18.77  best   18.73
+891.1s 85 ep  80/80  loss 0.0118  val RMSE   19.50  best   18.48
+891.8s 86 fold 0  best val RMSE = 18.48 px  (145.8s)
+891.8s 87 fold 1  train=64 val=16
+893.6s 88 ep   1/80  loss 0.4507  val RMSE  740.21  best  740.21
+920.6s 89 ep  16/80  loss 0.2753  val RMSE  202.02  best  202.02
+949.5s 90 ep  32/80  loss 0.1432  val RMSE  306.76  best  128.04
+978.3s 91 ep  48/80  loss 0.0386  val RMSE   72.07  best   48.07
+1006.9s 92 ep  64/80  loss 0.0274  val RMSE   24.22  best   23.15
+1035.6s 93 ep  80/80  loss 0.0254  val RMSE   24.19  best   21.77
+1036.2s 94 fold 1  best val RMSE = 21.77 px  (144.4s)
+1036.2s 95 fold 2  train=64 val=16
+1038.0s 96 ep   1/80  loss 0.3237  val RMSE  176.04  best  176.04
+1064.3s 97 ep  16/80  loss 0.2193  val RMSE  302.64  best  176.04
+1091.0s 98 早停于 epoch 31
+1091.6s 99 fold 2  best val RMSE = 176.04 px  (55.3s)
+1091.6s 100 fold 3  train=64 val=16
+1093.4s 101 ep   1/80  loss 0.4085  val RMSE  242.71  best  242.71
+1119.8s 102 ep  16/80  loss 0.2056  val RMSE  443.77  best  242.71
+1146.4s 103 早停于 epoch 31
+1147.0s 104 fold 3  best val RMSE = 242.71 px  (55.3s)
+1147.0s 105 fold 4  train=64 val=16
+1148.8s 106 ep   1/80  loss 0.4138  val RMSE  431.23  best  431.23
+1175.9s 107 ep  16/80  loss 0.2338  val RMSE  587.62  best  208.34
+1204.6s 108 ep  32/80  loss 0.1414  val RMSE  326.50  best  208.34
+1233.6s 109 ep  48/80  loss 0.0392  val RMSE   64.65  best   64.65
+1262.3s 110 ep  64/80  loss 0.0263  val RMSE   56.10  best   51.30
+1291.0s 111 ep  80/80  loss 0.0283  val RMSE   53.37  best   50.30
+1291.4s 112 fold 4  best val RMSE = 50.30 px  (144.5s)
+1291.4s 113 [heat] CV RMSE = 136.56 px   folds = 18.48, 21.77, 176.04, 242.71, 50.30
+1291.4s 114 最优融合权重 w(reg) = 0.95 | 融合后 OOF RMSE = 52.32 px
+1291.4s 115 
+1291.4s 116 各折 RMSE: {'reg': [56.17, 45.37, 41.34, 44.78, 70.5], 'heat': [18.48, 21.77, 176.04, 242.71, 50.3]}
+1291.4s 117 整体 OOF RMSE: 52.32 px  （常数均值基线约 146.6 px）
+1291.4s 118 误差最大的 5 张: [('0049', 55.3), ('0012', 45.3), ('0005', 11.7), ('0070', 54.8), ('0044', 146.2)]
+1291.5s 119 ImageID       value
+1291.5s 120 81_Fovea_X 1670.797169
+1291.5s 121 81_Fovea_Y 1105.111422
+1291.5s 122 82_Fovea_X 1639.433290
+1291.5s 123 82_Fovea_Y 1083.832957
+1291.5s 124 83_Fovea_X 1481.095568
+1291.5s 125 83_Fovea_Y 1031.651570
+1291.5s 126 84_Fovea_X 1321.475483
+1291.5s 127 84_Fovea_Y 1096.777451
+1291.5s 128 
+1291.5s 129 写出: /kaggle/working/submission.csv | 行数: 40
+1291.5s 130 已复制到 /kaggle/working/submission.csv
+1291.5s 131 
+1291.5s 132 预测 X: 1125.8 ~ 1690.8   Y: 1005.1 ~ 1105.1
+1291.5s 133 训练 GT 范围  X: 723.7 ~ 1794.6   Y: 930.2 ~ 1182.2
+1296.8s 134 /usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+1296.8s 135 cells[i][c] = re.sub('\\\\\|', '|', cell)
+1296.9s 136 /usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+1296.9s 137 text = re.sub(r'_', '\_', text) # Escape underscores in display text
+1297.7s 138 [NbConvertApp] Converting notebook __notebook__.ipynb to notebook
+1297.8s 139 [NbConvertApp] Writing 44962 bytes to __notebook__.ipynb
+1300.3s 140 [NbConvertApp] Converting notebook __notebook__.ipynb to html
+1301.0s 141 [NbConvertApp] Writing 429737 bytes to __results__.html

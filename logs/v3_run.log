@@ -1,0 +1,236 @@
+8.0s 1 0.00s - Debugger warning: It seems that frozen modules are being used, which may
+8.0s 2 0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+8.0s 3 0.00s - to python to disable frozen modules.
+8.0s 4 0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+8.7s 5 0.00s - Debugger warning: It seems that frozen modules are being used, which may
+8.7s 6 0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+8.7s 7 0.00s - to python to disable frozen modules.
+8.7s 8 0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+26.8s 9 torch 2.11.0+cu128 | device: cuda | SMOKE: False
+26.8s 10 GPU: Tesla T4
+26.9s 11 DATA ROOT: /kaggle/input/competitions/2026task3/detection
+56.8s 12 train=80  test=20
+56.8s 13 w     h
+56.8s 14 2992  2000    75
+56.8s 15 1956  1934     5
+57.0s 16 归一化 X: min 0.365  max 0.617  mean 0.494
+57.0s 17 归一化 Y: min 0.465  max 0.591  mean 0.529
+57.0s 18 像素 X : min 723.7  max 1794.6  std 202.5
+57.0s 19 像素 Y : min 930.2  max 1182.2  std 44.1
+57.0s 20 (0,0) 标注数量: 0
+57.0s 21 常数预测（训练集均值）的 RMSE 基线: 146.6 px
+62.7s 22 标注框中心与 GT 坐标的平均偏差: 2.4 px
+63.6s 23 letterbox / augment / dataset 定义完成
+63.9s 24 Downloading: "https://download.pytorch.org/models/resnet18-f37072fd.pth" to /root/.cache/torch/hub/checkpoints/resnet18-f37072fd.pth
+63.9s 25 0%|          | 0.00/44.7M [00:00<?, ?B/s]
+64.0s 26 0%|          | 0.00/44.7M [00:00<?, ?B/s] 20%|█▉        | 8.88M/44.7M [00:00<00:00, 79.8MB/s]
+64.1s 27 20%|█▉        | 8.88M/44.7M [00:00<00:00, 79.8MB/s] 66%|██████▋   | 29.6M/44.7M [00:00<00:00, 156MB/s]
+64.2s 28 66%|██████▋   | 29.6M/44.7M [00:00<00:00, 156MB/s] 100%|██████████| 44.7M/44.7M [00:00<00:00, 170MB/s]
+64.2s 29 100%|██████████| 44.7M/44.7M [00:00<00:00, 170MB/s]
+64.2s 30 
+64.2s 31 
+64.2s 32 参数量: 11.86M
+78.8s 33 缓存完成: train 80 张, test 20 张
+78.8s 34 
+78.8s 35 ===== mode = reg | seeds = [42] =====
+78.8s 36 seed 42 fold 0  train=64 val=16
+86.0s 37 ep   1/80  loss 0.1230  val RMSE  211.53  best  211.53
+111.6s 38 ep  16/80  loss 0.0808  val RMSE  134.20  best   98.15
+139.0s 39 ep  32/80  loss 0.0476  val RMSE   67.74  best   67.74
+166.7s 40 ep  48/80  loss 0.0400  val RMSE   62.66  best   56.96
+194.7s 41 ep  64/80  loss 0.0368  val RMSE   53.03  best   51.71
+222.8s 42 ep  80/80  loss 0.0388  val RMSE   51.05  best   47.56
+223.8s 43 seed 42 fold 0  best val RMSE = 47.56 px  (145.0s)
+223.8s 44 seed 42 fold 1  train=64 val=16
+225.6s 45 ep   1/80  loss 0.0940  val RMSE  260.95  best  260.95
+252.0s 46 ep  16/80  loss 0.0684  val RMSE   91.76  best   79.16
+280.0s 47 ep  32/80  loss 0.0515  val RMSE   67.57  best   63.58
+308.1s 48 ep  48/80  loss 0.0503  val RMSE   51.06  best   51.06
+335.8s 49 ep  64/80  loss 0.0398  val RMSE   41.64  best   38.15
+363.7s 50 ep  80/80  loss 0.0361  val RMSE   44.09  best   38.15
+364.4s 51 seed 42 fold 1  best val RMSE = 38.15 px  (140.6s)
+364.4s 52 seed 42 fold 2  train=64 val=16
+366.2s 53 ep   1/80  loss 0.1472  val RMSE  305.29  best  305.29
+392.5s 54 ep  16/80  loss 0.0675  val RMSE  104.37  best  104.37
+420.2s 55 ep  32/80  loss 0.0494  val RMSE   81.92  best   74.52
+448.6s 56 ep  48/80  loss 0.0400  val RMSE   72.03  best   70.59
+476.8s 57 ep  64/80  loss 0.0388  val RMSE   71.04  best   66.48
+505.5s 58 ep  80/80  loss 0.0411  val RMSE   65.09  best   63.61
+506.2s 59 seed 42 fold 2  best val RMSE = 63.61 px  (141.7s)
+506.2s 60 seed 42 fold 3  train=64 val=16
+508.0s 61 ep   1/80  loss 0.1155  val RMSE  134.63  best  134.63
+534.5s 62 ep  16/80  loss 0.0794  val RMSE  186.74  best   83.90
+563.0s 63 ep  32/80  loss 0.0629  val RMSE   45.85  best   44.21
+591.7s 64 ep  48/80  loss 0.0457  val RMSE   37.71  best   37.71
+619.8s 65 ep  64/80  loss 0.0414  val RMSE   50.22  best   35.70
+648.5s 66 ep  80/80  loss 0.0414  val RMSE   33.24  best   33.21
+649.2s 67 seed 42 fold 3  best val RMSE = 33.21 px  (142.9s)
+649.2s 68 seed 42 fold 4  train=64 val=16
+651.3s 69 ep   1/80  loss 0.0980  val RMSE  366.24  best  366.24
+678.4s 70 ep  16/80  loss 0.0635  val RMSE  129.49  best  122.92
+707.2s 71 ep  32/80  loss 0.0498  val RMSE  101.04  best   99.78
+736.0s 72 ep  48/80  loss 0.0374  val RMSE   79.30  best   79.30
+764.5s 73 ep  64/80  loss 0.0358  val RMSE   76.20  best   76.20
+794.0s 74 ep  80/80  loss 0.0340  val RMSE   73.96  best   73.69
+794.8s 75 seed 42 fold 4  best val RMSE = 73.69 px  (145.5s)
+794.8s 76 [seed 42] OOF RMSE = 53.47 px
+794.8s 77 [reg] 单 seed: 42:53.47
+794.8s 78 [reg] 1 seed 集成 CV RMSE = 53.47 px
+794.8s 79 
+794.8s 80 ===== mode = heat | seeds = [42, 1234, 7] =====
+794.8s 81 seed 42 fold 0  train=64 val=16
+797.4s 82 ep   1/80  loss 0.2144  val RMSE  544.28  best  544.28
+825.0s 83 ep  16/80  loss 0.0163  val RMSE  131.81  best   25.07
+854.4s 84 ep  32/80  loss 0.0117  val RMSE  143.78  best   25.07
+883.8s 85 ep  48/80  loss 0.0101  val RMSE   19.59  best    9.53
+913.3s 86 ep  64/80  loss 0.0091  val RMSE   12.56  best    9.53
+913.3s 87 早停于 epoch 64
+914.1s 88 seed 42 fold 0  best val RMSE = 9.53 px  (119.3s)
+914.1s 89 seed 42 fold 1  train=64 val=16
+915.9s 90 ep   1/80  loss 0.1777  val RMSE  323.45  best  323.45
+943.9s 91 ep  16/80  loss 0.0156  val RMSE   20.02  best   18.50
+973.2s 92 ep  32/80  loss 0.0114  val RMSE   15.90  best   14.70
+1002.6s 93 ep  48/80  loss 0.0096  val RMSE   16.11  best   14.70
+1006.5s 94 早停于 epoch 50
+1007.2s 95 seed 42 fold 1  best val RMSE = 14.70 px  (93.1s)
+1007.2s 96 seed 42 fold 2  train=64 val=16
+1009.1s 97 ep   1/80  loss 0.1601  val RMSE  202.98  best  202.98
+1036.7s 98 ep  16/80  loss 0.0155  val RMSE   28.09  best   26.54
+1066.3s 99 ep  32/80  loss 0.0117  val RMSE   23.70  best   20.53
+1095.7s 100 ep  48/80  loss 0.0106  val RMSE   26.89  best   20.53
+1110.7s 101 早停于 epoch 56
+1111.5s 102 seed 42 fold 2  best val RMSE = 20.53 px  (104.2s)
+1111.5s 103 seed 42 fold 3  train=64 val=16
+1113.4s 104 ep   1/80  loss 0.1798  val RMSE  281.27  best  281.27
+1141.0s 105 ep  16/80  loss 0.0159  val RMSE   10.10  best    7.18
+1170.2s 106 ep  32/80  loss 0.0112  val RMSE    6.53  best    6.07
+1199.5s 107 ep  48/80  loss 0.0098  val RMSE    6.77  best    6.07
+1216.4s 108 早停于 epoch 57
+1217.1s 109 seed 42 fold 3  best val RMSE = 6.07 px  (105.6s)
+1217.1s 110 seed 42 fold 4  train=64 val=16
+1219.0s 111 ep   1/80  loss 0.3040  val RMSE  490.17  best  490.17
+1246.9s 112 ep  16/80  loss 0.0141  val RMSE   27.69  best   27.69
+1276.6s 113 ep  32/80  loss 0.0101  val RMSE   24.78  best   24.78
+1306.2s 114 ep  48/80  loss 0.0078  val RMSE   26.03  best   24.78
+1332.0s 115 早停于 epoch 62
+1332.7s 116 seed 42 fold 4  best val RMSE = 24.78 px  (115.6s)
+1332.7s 117 [seed 42] OOF RMSE = 16.61 px
+1332.7s 118 seed 1234 fold 0  train=64 val=16
+1334.7s 119 ep   1/80  loss 0.1480  val RMSE  367.07  best  367.07
+1362.6s 120 ep  16/80  loss 0.0147  val RMSE   76.06  best   21.28
+1392.4s 121 ep  32/80  loss 0.0115  val RMSE    9.29  best    8.28
+1421.9s 122 ep  48/80  loss 0.0092  val RMSE   13.13  best    8.28
+1442.0s 123 早停于 epoch 59
+1442.8s 124 seed 1234 fold 0  best val RMSE = 8.28 px  (110.0s)
+1442.8s 125 seed 1234 fold 1  train=64 val=16
+1444.8s 126 ep   1/80  loss 0.2330  val RMSE  526.29  best  526.29
+1472.4s 127 ep  16/80  loss 0.0143  val RMSE   19.96  best   17.72
+1501.6s 128 ep  32/80  loss 0.0116  val RMSE   17.43  best   17.17
+1530.7s 129 ep  48/80  loss 0.0089  val RMSE   19.05  best   16.41
+1559.8s 130 ep  64/80  loss 0.0080  val RMSE   17.52  best   16.41
+1561.9s 131 早停于 epoch 65
+1562.6s 132 seed 1234 fold 1  best val RMSE = 16.41 px  (119.8s)
+1562.6s 133 seed 1234 fold 2  train=64 val=16
+1564.5s 134 ep   1/80  loss 0.1673  val RMSE  380.24  best  380.24
+1592.1s 135 ep  16/80  loss 0.0159  val RMSE   31.67  best   27.35
+1621.6s 136 ep  32/80  loss 0.0127  val RMSE   23.83  best   23.01
+1651.1s 137 ep  48/80  loss 0.0105  val RMSE   27.50  best   23.01
+1665.9s 138 早停于 epoch 56
+1666.6s 139 seed 1234 fold 2  best val RMSE = 23.01 px  (104.0s)
+1666.6s 140 seed 1234 fold 3  train=64 val=16
+1668.5s 141 ep   1/80  loss 0.2151  val RMSE  207.89  best  207.89
+1696.4s 142 ep  16/80  loss 0.0164  val RMSE   11.11  best    9.94
+1725.7s 143 ep  32/80  loss 0.0123  val RMSE    8.13  best    6.98
+1755.2s 144 ep  48/80  loss 0.0103  val RMSE    6.68  best    6.10
+1784.8s 145 ep  64/80  loss 0.0093  val RMSE    5.85  best    5.71
+1814.3s 146 ep  80/80  loss 0.0087  val RMSE    6.17  best    5.71
+1815.0s 147 seed 1234 fold 3  best val RMSE = 5.71 px  (148.4s)
+1815.0s 148 seed 1234 fold 4  train=64 val=16
+1816.9s 149 ep   1/80  loss 0.1743  val RMSE  325.99  best  325.99
+1844.4s 150 ep  16/80  loss 0.0161  val RMSE  124.92  best   93.08
+1873.4s 151 ep  32/80  loss 0.0115  val RMSE   28.77  best   25.86
+1902.1s 152 ep  48/80  loss 0.0099  val RMSE   27.26  best   25.51
+1931.3s 153 ep  64/80  loss 0.0085  val RMSE   25.23  best   24.84
+1960.6s 154 ep  80/80  loss 0.0083  val RMSE   25.06  best   24.81
+1961.4s 155 seed 1234 fold 4  best val RMSE = 24.81 px  (146.3s)
+1961.4s 156 [seed 1234] OOF RMSE = 18.41 px
+1961.4s 157 seed 7 fold 0  train=64 val=16
+1963.3s 158 ep   1/80  loss 0.1767  val RMSE  473.51  best  473.51
+1990.5s 159 ep  16/80  loss 0.0191  val RMSE  199.92  best   88.17
+2019.6s 160 ep  32/80  loss 0.0130  val RMSE  319.03  best   88.17
+2025.2s 161 早停于 epoch 35
+2025.2s 162 seed 7 fold 0 首次 88.2 px 超过阈值 60，降低 lr 重训一次
+2027.1s 163 ep   1/80  loss 0.1924  val RMSE  375.60  best  375.60
+2054.6s 164 ep  16/80  loss 0.0195  val RMSE   79.61  best   49.60
+2083.8s 165 ep  32/80  loss 0.0153  val RMSE   49.24  best   22.54
+2112.9s 166 ep  48/80  loss 0.0135  val RMSE   13.64  best   11.47
+2142.1s 167 ep  64/80  loss 0.0124  val RMSE   19.23  best   11.47
+2165.9s 168 早停于 epoch 77
+2165.9s 169 重训结果 11.5 px → 采用 11.5 px
+2166.6s 170 seed 7 fold 0  best val RMSE = 11.47 px  (205.2s)
+2166.6s 171 seed 7 fold 1  train=64 val=16
+2168.6s 172 ep   1/80  loss 0.1818  val RMSE  305.90  best  305.90
+2196.5s 173 ep  16/80  loss 0.0166  val RMSE   23.06  best   21.89
+2226.3s 174 ep  32/80  loss 0.0112  val RMSE   18.46  best   17.46
+2255.7s 175 ep  48/80  loss 0.0097  val RMSE   17.21  best   17.21
+2284.9s 176 ep  64/80  loss 0.0083  val RMSE   18.43  best   17.06
+2315.0s 177 ep  80/80  loss 0.0080  val RMSE   18.47  best   17.06
+2315.7s 178 seed 7 fold 1  best val RMSE = 17.06 px  (149.0s)
+2315.7s 179 seed 7 fold 2  train=64 val=16
+2317.5s 180 ep   1/80  loss 0.1510  val RMSE  407.68  best  407.68
+2345.2s 181 ep  16/80  loss 0.0180  val RMSE   29.14  best   28.42
+2374.8s 182 ep  32/80  loss 0.0140  val RMSE   27.71  best   22.88
+2404.2s 183 ep  48/80  loss 0.0112  val RMSE   26.52  best   22.88
+2409.9s 184 早停于 epoch 51
+2410.7s 185 seed 7 fold 2  best val RMSE = 22.88 px  (95.0s)
+2410.7s 186 seed 7 fold 3  train=64 val=16
+2412.6s 187 ep   1/80  loss 0.1893  val RMSE  222.20  best  222.20
+2440.5s 188 ep  16/80  loss 0.0161  val RMSE    8.58  best    8.58
+2470.2s 189 ep  32/80  loss 0.0126  val RMSE    8.05  best    6.25
+2499.8s 190 ep  48/80  loss 0.0101  val RMSE    6.87  best    6.25
+2529.3s 191 ep  64/80  loss 0.0089  val RMSE    5.67  best    5.55
+2559.0s 192 ep  80/80  loss 0.0087  val RMSE    5.72  best    5.55
+2559.7s 193 seed 7 fold 3  best val RMSE = 5.55 px  (149.0s)
+2559.7s 194 seed 7 fold 4  train=64 val=16
+2561.6s 195 ep   1/80  loss 0.1510  val RMSE  448.20  best  448.20
+2589.3s 196 ep  16/80  loss 0.0148  val RMSE   29.87  best   29.87
+2618.7s 197 ep  32/80  loss 0.0113  val RMSE   28.64  best   27.81
+2648.2s 198 ep  48/80  loss 0.0093  val RMSE   25.98  best   25.89
+2677.8s 199 ep  64/80  loss 0.0081  val RMSE   26.30  best   25.13
+2707.2s 200 ep  80/80  loss 0.0076  val RMSE   26.27  best   25.13
+2707.9s 201 seed 7 fold 4  best val RMSE = 25.13 px  (148.2s)
+2707.9s 202 [seed 7] OOF RMSE = 18.76 px
+2707.9s 203 [heat] 单 seed: 42:16.61, 1234:18.41, 7:18.76
+2707.9s 204 [heat] 3 seed 集成 CV RMSE = 16.90 px
+2707.9s 205 最优融合权重 w(reg) = 0.00 | 融合后 OOF RMSE = 16.90 px
+2707.9s 206 
+2707.9s 207 各 seed 各折 best RMSE:
+2707.9s 208 reg  seed 42: 47.6, 38.1, 63.6, 33.2, 73.7
+2707.9s 209 heat seed 42: 9.5, 14.7, 20.5, 6.1, 24.8
+2707.9s 210 heat seed 1234: 8.3, 16.4, 23.0, 5.7, 24.8
+2707.9s 211 heat seed 7: 11.5, 17.1, 22.9, 5.6, 25.1
+2707.9s 212 整体 OOF RMSE: 16.90 px  （常数均值基线约 146.6 px）
+2707.9s 213 误差最大的 5 张: [('0049', 7.4), ('0034', 2.9), ('0072', 9.7), ('0016', 14.6), ('0024', 21.0)]
+2708.2s 214 ImageID       value
+2708.2s 215 81_Fovea_X 1741.430786
+2708.2s 216 81_Fovea_Y 1127.926717
+2708.2s 217 82_Fovea_X 1694.388753
+2708.2s 218 82_Fovea_Y 1104.054728
+2708.2s 219 83_Fovea_X 1484.760457
+2708.2s 220 83_Fovea_Y 1034.434530
+2708.2s 221 84_Fovea_X 1250.429606
+2708.2s 222 84_Fovea_Y 1104.806030
+2708.2s 223 
+2708.2s 224 写出: /kaggle/working/submission.csv | 行数: 40
+2708.2s 225 已复制到 /kaggle/working/submission.csv
+2708.2s 226 
+2708.2s 227 预测 X: 1199.7 ~ 1741.4   Y: 974.6 ~ 1220.6
+2708.2s 228 训练 GT 范围  X: 723.7 ~ 1794.6   Y: 930.2 ~ 1182.2
+2714.0s 229 /usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+2714.0s 230 cells[i][c] = re.sub('\\\\\|', '|', cell)
+2714.1s 231 /usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+2714.1s 232 text = re.sub(r'_', '\_', text) # Escape underscores in display text
+2715.7s 233 [NbConvertApp] Converting notebook __notebook__.ipynb to notebook
+2715.8s 234 [NbConvertApp] Writing 57079 bytes to __notebook__.ipynb
+2719.0s 235 [NbConvertApp] Converting notebook __notebook__.ipynb to html
+2719.7s 236 [NbConvertApp] Writing 464636 bytes to __results__.html

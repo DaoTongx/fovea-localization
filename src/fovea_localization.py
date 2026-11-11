@@ -1,0 +1,746 @@
+# %% [markdown]
+# # 黄斑中央凹定位（Fovea Localization）
+#
+# 任务：给定眼底图像，预测黄斑中央凹在原图上的像素坐标 (X, Y)；若中央凹不可见则输出 (0, 0)。
+# 评价：提交把 X / Y 拆成相邻两行，按 RMSE 排名（越小越好）。
+#
+# 本 notebook 的做法：
+# 1. **Letterbox 预处理**：把任意尺寸的眼底图等比缩放进 `IMG x IMG` 方框（补黑边），
+#    坐标按同一变换归一化，预测后再逆变换回原图尺寸 —— 这样 RMSE 是在原图像素尺度上算的。
+# 2. **两种回归头**：
+#    - `heat`：输出 1/4 分辨率的中心凹热力图（Gaussian 监督），用 soft-argmax 取亚像素坐标；
+#    - `reg`：全局池化 + 全连接直接回归归一化坐标。
+# 3. **5 折交叉验证 + 强增强 + TTA（原图/水平翻转）**，两种头的 OOF 结果按交叉验证 RMSE 加权融合。
+# 4. 训练完直接生成 `submission.csv`（严格按 sample_submission 的两行一组格式）。
+#
+# > 环境：Kaggle Notebook，Accelerator 选 **GPU T4 / P100**，Internet 打开（要下 ImageNet 预训练权重）。
+# > 数据：把比赛数据作为一个 Kaggle Dataset 挂上即可，下面的代码会自动在 `/kaggle/input` 里找 `fovea_localization_train_GT.csv`。
+
+# %% [markdown]
+# ## 1. 环境与配置
+
+# %%
+import os, sys, math, time, json, random, warnings
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import cv2
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+import torchvision
+from torchvision.models import resnet18, ResNet18_Weights
+from sklearn.model_selection import StratifiedKFold
+
+warnings.filterwarnings("ignore")
+
+SMOKE = os.environ.get("SMOKE", "0") == "1"          # 本地冒烟测试用，Kaggle 上保持 0
+CFG = dict(
+    img=256 if SMOKE else 768,      # 网络输入边长（512→榜单16，640→榜单14，继续往上试）
+    stride=4,                       # 热力图下采样倍数
+    sigma=1.5,                      # 热力图 Gaussian 标准差（单位：热力图格子）
+    folds=2 if SMOKE else 5,
+    epochs=2 if SMOKE else 80,
+    batch=8,
+    lr_backbone=1e-4,
+    lr_head=2e-4,
+    wd=1e-4,
+    warmup=5,                       # 前 5 个 epoch 线性预热，避免热力图一上来就饱和
+    patience=30,
+    clahe=0.0,                      # 绿通道 CLAHE（0=关闭）。实测：难的 8 张变好、简单的变差，整体更差
+    modes=("heat",),                # reg 头在 OOF 上权重为 0，默认不跑（要对比可改回 ("reg","heat")）
+    tta=True,
+    seed=42,                        # 只用于生成交叉验证的划分
+    seeds=(42, 1234, 7),            # 多 seed 集成用的模型种子
+    workers=0 if os.name == "nt" else 2,
+)
+# 允许用环境变量微调（本地调试用，Kaggle 上不用管）
+CFG["epochs"] = int(os.environ.get("EPOCHS", CFG["epochs"]))
+CFG["img"] = int(os.environ.get("IMG", CFG["img"]))
+CFG["folds"] = int(os.environ.get("FOLDS", CFG["folds"]))
+CFG["max_folds"] = int(os.environ.get("MAXFOLDS", CFG["folds"]))
+if os.environ.get("MODES"):
+    CFG["modes"] = tuple(m.strip() for m in os.environ["MODES"].split(",") if m.strip())
+if os.environ.get("SEEDS"):
+    CFG["seeds"] = tuple(int(s) for s in os.environ["SEEDS"].split(",") if s.strip())
+if os.environ.get("CLAHE"):
+    CFG["clahe"] = float(os.environ["CLAHE"])     # 0 = 关闭，可用来做 A/B
+
+# heat 头用全部 seed；reg 头本来就弱，只跑第一个 seed 省时间（融合时它只是配角）
+CFG["seeds_by_mode"] = {m: (CFG["seeds"] if m == "heat" else CFG["seeds"][:1]) for m in CFG["modes"]}
+
+# 单折训练后 best 验证 RMSE 超过阈值 → 降低学习率重训一次（小样本偶发训练失败的安全网）
+RETRY_THRESH = {"heat": 60.0, "reg": 85.0}
+
+DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("torch", torch.__version__, "| device:", DEV, "| SMOKE:", SMOKE)
+print(f"配置: IMG={CFG['img']} epochs={CFG['epochs']} folds={CFG['folds']} "
+      f"modes={CFG['modes']} seeds={CFG['seeds']} clahe={CFG['clahe']}")
+if DEV.type == "cuda":
+    print("GPU:", torch.cuda.get_device_name(0))
+    torch.backends.cudnn.benchmark = True
+
+
+def seed_all(s):
+    random.seed(s); np.random.seed(s)
+    torch.manual_seed(s); torch.cuda.manual_seed_all(s)
+    os.environ["PYTHONHASHSEED"] = str(s)
+
+
+seed_all(CFG["seed"])
+
+MEAN = np.array([0.485, 0.456, 0.406], np.float32)
+STD = np.array([0.229, 0.224, 0.225], np.float32)
+
+# %% [markdown]
+# ## 2. 找到数据并读入标注
+
+# %%
+def find_data_root():
+    """Kaggle 上自动搜索，本地用环境变量 FOVEA_DATA 指定。"""
+    env = os.environ.get("FOVEA_DATA")
+    if env and (Path(env) / "fovea_localization_train_GT.csv").exists():
+        return Path(env)
+    if Path("/kaggle/input").is_dir():
+        for root, _, files in os.walk("/kaggle/input"):
+            if "fovea_localization_train_GT.csv" in files:
+                return Path(root)
+    for p in [Path("raw/detection"), Path("../raw/detection")]:
+        if (p / "fovea_localization_train_GT.csv").exists():
+            return p
+    raise FileNotFoundError("找不到 fovea_localization_train_GT.csv，请把它所在的目录赋给环境变量 FOVEA_DATA")
+
+
+ROOT = find_data_root()
+print("DATA ROOT:", ROOT)
+
+gt = pd.read_csv(ROOT / "fovea_localization_train_GT.csv", dtype={"data": str})
+gt["ImageId"] = gt["data"].str.strip().str.zfill(4)
+gt["path"] = gt["ImageId"].map(lambda x: str(ROOT / "train" / f"{x}.jpg"))
+gt["exists"] = gt["path"].map(os.path.exists)
+assert gt["exists"].all(), gt.loc[~gt["exists"], "path"].tolist()
+gt = gt.rename(columns={"Fovea_X": "x", "Fovea_Y": "y"}).reset_index(drop=True)
+
+test_ids = sorted(p.stem for p in (ROOT / "test").glob("*.jpg"))
+test_paths = [str(ROOT / "test" / f"{t}.jpg") for t in test_ids]
+
+
+def img_size(path):
+    im = cv2.imread(path, cv2.IMREAD_COLOR)
+    return im.shape[1], im.shape[0]
+
+
+gt[["w", "h"]] = [list(img_size(p)) for p in gt["path"]]
+print(f"train={len(gt)}  test={len(test_ids)}")
+print(gt[["w", "h"]].value_counts().to_string())
+
+# %% [markdown]
+# ### 数据观察
+#
+# 把关键统计打出来：坐标是否都在图内、归一化后的分布范围、是否存在 (0,0) 的“不可见”样本。
+# 这些决定了建模细节。
+
+# %%
+gt["nx"], gt["ny"] = gt["x"] / gt["w"], gt["y"] / gt["h"]
+print("归一化 X: min %.3f  max %.3f  mean %.3f" % (gt.nx.min(), gt.nx.max(), gt.nx.mean()))
+print("归一化 Y: min %.3f  max %.3f  mean %.3f" % (gt.ny.min(), gt.ny.max(), gt.ny.mean()))
+print("像素 X : min %.1f  max %.1f  std %.1f" % (gt.x.min(), gt.x.max(), gt.x.std()))
+print("像素 Y : min %.1f  max %.1f  std %.1f" % (gt.y.min(), gt.y.max(), gt.y.std()))
+print("(0,0) 标注数量:", int(((gt.x == 0) & (gt.y == 0)).sum()))
+
+base_rmse = math.sqrt(0.5 * (gt.x.var() + gt.y.var()))
+print("常数预测（训练集均值）的 RMSE 基线: %.1f px" % base_rmse)
+
+# 训练标注框（可选参考）：框中心应与 GT 坐标几乎一致
+bb_dir = ROOT / "train_location"
+if bb_dir.is_dir():
+    import xml.etree.ElementTree as ET
+    dists = []
+    for iid in gt.ImageId:
+        r = ET.parse(bb_dir / f"{iid}.xml").getroot()
+        ob = r.find("object")
+        if ob is None:
+            continue
+        b = ob.find("bndbox")
+        cx = (float(b.findtext("xmin")) + float(b.findtext("xmax"))) / 2
+        cy = (float(b.findtext("ymin")) + float(b.findtext("ymax"))) / 2
+        row = gt[gt.ImageId == iid].iloc[0]
+        dists.append(math.hypot(cx - row.x, cy - row.y))
+    print("标注框中心与 GT 坐标的平均偏差: %.1f px" % np.mean(dists))
+
+# 画 4 张训练图，红叉 = GT
+fig, axes = plt.subplots(1, 4, figsize=(16, 4.2))
+for ax, (_, r) in zip(axes, gt.sample(4, random_state=0).iterrows()):
+    im = cv2.cvtColor(cv2.imread(r.path), cv2.COLOR_BGR2RGB)
+    ax.imshow(im)
+    ax.plot(r.x, r.y, "x", color="red", ms=14, mew=3)
+    ax.set_title(r.ImageId); ax.axis("off")
+plt.tight_layout(); plt.show()
+
+# %% [markdown]
+# ## 3. 预处理 / 增强
+#
+# - **letterbox**：等比缩放 + 居中补黑边，返回缩放比 `s` 与偏移 `l, t`，用于坐标的正/逆变换。
+# - **CLAHE（绿通道）**：眼底图的血管和黄斑无血管区在绿通道最清楚；8 张误差最大的图
+#   全是“雾状/低对比”的，做一次 CLAHE 后黄斑暗斑肉眼可见度提升明显（见 `clahe_cmp.jpg`）。
+# - **增强**：水平翻转、旋转 ±12°、缩放 0.85~1.15、平移 ±5%、gamma / 亮度 / 对比度 / 通道增益。
+#   所有几何变换都用同一个仿射矩阵同时作用于图像和坐标。
+# - **热力图目标**：在 1/4 分辨率网格上画 Gaussian。
+
+# %%
+def letterbox(path, size):
+    im = cv2.imread(path, cv2.IMREAD_COLOR)
+    im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+    h, w = im.shape[:2]
+    s = size / max(h, w)
+    nw, nh = max(1, int(round(w * s))), max(1, int(round(h * s)))
+    interp = cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR
+    r = cv2.resize(im, (nw, nh), interpolation=interp)
+    out = np.zeros((size, size, 3), np.uint8)
+    l, t = (size - nw) // 2, (size - nh) // 2
+    out[t:t + nh, l:l + nw] = r
+
+    if CFG["clahe"] > 0:      # 绿通道 CLAHE，输出三通道灰度图
+        g = cv2.createCLAHE(clipLimit=CFG["clahe"], tileGridSize=(8, 8)).apply(out[:, :, 1])
+        out = cv2.cvtColor(g, cv2.COLOR_GRAY2RGB)
+    return out, s, l, t
+
+
+def augment(img, pt, rng):
+    """img: SxSx3 uint8（已 letterbox），pt: (x, y) 在 letterbox 坐标系。返回 float [0,1] 图与新坐标。"""
+    S = img.shape[0]
+    if rng.random() < 0.5:
+        img = img[:, ::-1].copy()
+        pt = (S - 1 - pt[0], pt[1])
+
+    ang, sc = rng.uniform(-12, 12), rng.uniform(0.85, 1.15)
+    M = cv2.getRotationMatrix2D((S / 2, S / 2), ang, sc)
+    M[0, 2] += rng.uniform(-0.05, 0.05) * S
+    M[1, 2] += rng.uniform(-0.05, 0.05) * S
+    img = cv2.warpAffine(img, M, (S, S), flags=cv2.INTER_LINEAR,
+                         borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+    pt = (M[0, 0] * pt[0] + M[0, 1] * pt[1] + M[0, 2],
+          M[1, 0] * pt[0] + M[1, 1] * pt[1] + M[1, 2])
+
+    x = img.astype(np.float32) / 255.0
+    x = x ** rng.uniform(0.85, 1.2)                                  # gamma
+    x = x * rng.uniform(0.85, 1.15) + rng.uniform(-0.03, 0.03)       # 亮度 / 对比度
+    x = x * rng.uniform(0.95, 1.05)                                  # 整体增益（输入已是灰度，不再按通道扰动）
+    return np.clip(x, 0, 1).astype(np.float32), pt
+
+
+class FoveaDS(Dataset):
+    def __init__(self, items, size, stride=4, sigma=2.0, train=True, seed=0):
+        self.items, self.size, self.stride = items, size, stride
+        self.sigma, self.train = sigma, train
+        self.rng = np.random.default_rng(seed)
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, i):
+        it = self.items[i]
+        S = self.size
+        pt = (it["x"] * it["s"] + it["l"], it["y"] * it["s"] + it["t"])
+        img = it["img"]
+        if self.train:
+            f, pt = augment(img.copy(), pt, self.rng)
+        else:
+            f = img.astype(np.float32) / 255.0
+
+        x = (f - MEAN) / STD
+        hs = S // self.stride
+        gx, gy = pt[0] / self.stride - 0.5, pt[1] / self.stride - 0.5
+        yy, xx = np.mgrid[0:hs, 0:hs].astype(np.float32)
+        hm = np.exp(-((xx - gx) ** 2 + (yy - gy) ** 2) / (2 * self.sigma ** 2)).astype(np.float32)
+
+        return (torch.from_numpy(x.transpose(2, 0, 1).copy()),
+                torch.from_numpy(hm[None]),
+                torch.tensor(pt, dtype=torch.float32),
+                i)
+
+
+print("letterbox / augment / dataset 定义完成")
+
+# %% [markdown]
+# ## 4. 模型
+#
+# 主干是 ImageNet 预训练的 ResNet18，`layer4` 输出步长 32。
+# - `heat` 头：3 次 ×2 上采样到 1/4 分辨率，1 通道热力图；推理用 soft-argmax 得到亚像素坐标。
+# - `reg` 头：全局平均池化 + Dropout + Linear(2)，直接回归归一化坐标。
+
+# %%
+def soft_argmax(hm, r=3, eps=1e-8):
+    """hm: Bx1xHxW (>=0)。以峰值格点为中心，在 (2r+1)^2 窗口内做加权质心。
+
+    返回 Bx2，单位是热力图“格点下标”（格子 i 的下标就是 i），
+    换算回 letterbox 像素：`(idx + 0.5) * stride`。
+    只在窗口内归一化，避免大面积近零背景把质心拉回图像中心。
+    """
+    b, _, h, w = hm.shape
+    flat = hm.reshape(b, -1)
+    k = flat.argmax(1)
+    cy = torch.div(k, w, rounding_mode="floor")
+    cx = k % w
+
+    offs = torch.arange(-r, r + 1, device=hm.device)
+    gy = (cy[:, None, None] + offs[None, :, None]).expand(b, 2 * r + 1, 2 * r + 1).clamp(0, h - 1)
+    gx = (cx[:, None, None] + offs[None, None, :]).expand(b, 2 * r + 1, 2 * r + 1).clamp(0, w - 1)
+    wgt = hm[torch.arange(b, device=hm.device)[:, None, None], 0, gy.long(), gx.long()].clamp_min(0)
+
+    sx = wgt.sum(1)                       # B x (2r+1)
+    sy = wgt.sum(2)                       # B x (2r+1)
+    dx = (sx * offs).sum(1) / (sx.sum(1) + eps)
+    dy = (sy * offs).sum(1) / (sy.sum(1) + eps)
+    return torch.stack([cx + dx, cy + dy], dim=1)
+
+
+class FoveaNet(nn.Module):
+    def __init__(self, mode="heat", stride=4, pretrained=True):
+        super().__init__()
+        assert mode in ("heat", "reg")
+        self.mode, self.stride = mode, stride
+        try:
+            w = ResNet18_Weights.DEFAULT if pretrained else None
+            bb = resnet18(weights=w)
+        except Exception as e:      # 没网时退化为随机初始化
+            print("预训练权重加载失败，改为随机初始化：", e)
+            bb = resnet18(weights=None)
+
+        self.stem = nn.Sequential(*list(bb.children())[:8])   # conv1 ... layer4
+        if mode == "heat":
+            self.head = nn.Sequential(
+                nn.Conv2d(512, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
+                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+                nn.Conv2d(128, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
+                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+                nn.Conv2d(64, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True),
+                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+                nn.Conv2d(32, 1, 1),
+            )
+        else:
+            self.head = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten(),
+                                      nn.Dropout(0.3), nn.Linear(512, 2))
+
+        if mode == "heat":
+            # 最后一层 bias 设成 -4：初始 sigmoid ≈ 0.018，一开始就是“几乎全背景”，
+            # 避免从均匀 0.5 出发时 soft-argmax 永远停在图像中心、梯度消失。
+            last_conv = [m for m in self.head if isinstance(m, nn.Conv2d)][-1]
+            nn.init.constant_(last_conv.bias, -4.0)
+
+    def forward(self, x):
+        f = self.stem(x)
+        if self.mode == "heat":
+            return {"heat": self.head(f)}
+        return {"xy": torch.sigmoid(self.head(f))}
+
+
+def forward_xy(model, x):
+    """返回 letterbox 坐标（像素）。"""
+    o = model(x)
+    if model.mode == "heat":
+        return (soft_argmax(torch.sigmoid(o["heat"])) + 0.5) * model.stride
+    return o["xy"] * x.shape[-1]
+
+
+_net = FoveaNet("heat", CFG["stride"])
+print("参数量: %.2fM" % (sum(p.numel() for p in _net.parameters()) / 1e6))
+del _net
+
+# %% [markdown]
+# ## 5. 训练 / 推理
+#
+# 损失：热力图 **BCE-with-logits** + 1.0 × soft-argmax 坐标 L1；`reg` 模式用坐标 L1。
+# 前 `CFG["warmup"]` 个 epoch 线性预热学习率；某折 best 超过 `RETRY_THRESH` 会自动降 lr 重训一次。
+# 验证指标直接按比赛口径算：`sqrt(0.5*(mean(dx^2)+mean(dy^2)))`，单位是原图像素。
+
+# %%
+def make_items(df, size):
+    """df 需要列：id, path, w, h, x, y。测试集的 x/y 填 0 即可（不参与 loss）。"""
+    items = []
+    for _, r in df.iterrows():
+        img, s, l, t = letterbox(r.path, size)
+        items.append(dict(img=img, s=s, l=l, t=t, x=r.x, y=r.y, w=r.w, h=r.h, id=r.id))
+    return items
+
+
+def collate(batch):
+    xs = torch.stack([b[0] for b in batch])
+    hms = torch.stack([b[1] for b in batch])
+    pts = torch.stack([b[2] for b in batch])
+    idx = torch.tensor([b[3] for b in batch])
+    return xs, hms, pts, idx
+
+
+def to_orig(xy_lb, items, idxs):
+    """letterbox 坐标 -> 原图坐标，并裁剪到图像范围内。"""
+    out = []
+    for (x, y), i in zip(xy_lb, idxs):
+        it = items[i]
+        xo = (x - it["l"]) / it["s"]
+        yo = (y - it["t"]) / it["s"]
+        out.append([float(np.clip(xo, 0, it["w"] - 1)), float(np.clip(yo, 0, it["h"] - 1))])
+    return np.asarray(out, np.float64)
+
+
+@torch.no_grad()
+def infer(model, items, size, tta=True, batch=None):
+    batch = batch or CFG["batch"]
+    ds = FoveaDS(items, size, CFG["stride"], CFG["sigma"], train=False)
+    dl = DataLoader(ds, batch_size=batch, shuffle=False, num_workers=0, collate_fn=collate)
+    model.eval()
+    preds, order = [], []
+    for xb, _, _, idx in dl:
+        xb = xb.to(DEV)
+        views = [False, True] if tta else [False]
+        acc = []
+        for fl in views:
+            xin = torch.flip(xb, dims=[3]) if fl else xb
+            xy = forward_xy(model, xin)
+            if fl:
+                xy = xy.clone()
+                xy[:, 0] = size - 1 - xy[:, 0]
+            acc.append(xy)
+        preds.append(torch.stack(acc).mean(0).cpu().numpy())
+        order.extend(idx.tolist())
+    preds = np.concatenate(preds, 0)
+    return to_orig(preds, items, order)
+
+
+@torch.no_grad()
+def infer_heatmaps(model, items, size, tta=True, batch=None):
+    """返回 (idxs, hms)。hms 为 (K, hs, hs) 的概率图，已对不同 TTA 视角取平均。
+
+    多 seed 集成时在**热力图层面**平均，比平均坐标更能压掉噪声。
+    """
+    batch = batch or CFG["batch"]
+    ds = FoveaDS(items, size, CFG["stride"], CFG["sigma"], train=False)
+    dl = DataLoader(ds, batch_size=batch, shuffle=False, num_workers=0, collate_fn=collate)
+    model.eval()
+    out, order = [], []
+    for xb, _, _, idx in dl:
+        xb = xb.to(DEV)
+        acc, nv = None, 0
+        for fl in ([False, True] if tta else [False]):
+            xin = torch.flip(xb, dims=[3]) if fl else xb
+            hm = torch.sigmoid(model(xin)["heat"])
+            if fl:
+                hm = torch.flip(hm, dims=[3])
+            acc = hm if acc is None else acc + hm
+            nv += 1
+        out.append((acc / nv).cpu().numpy()[:, 0])
+        order.extend(idx.tolist())
+    return order, np.concatenate(out, 0)
+
+
+def decode_heatmaps(hm_mean, items):
+    """把 (K, hs, hs) 的平均热力图解码成原图坐标。"""
+    t = torch.from_numpy(np.ascontiguousarray(hm_mean, dtype=np.float32))[:, None].to(DEV)
+    xy = (soft_argmax(torch.sigmoid(t)) + 0.5) * CFG["stride"]
+    return to_orig(xy.cpu().numpy(), items, list(range(len(items))))
+
+
+def rmse_xy(pred, gt_xy):
+    d = pred - gt_xy
+    return float(math.sqrt(0.5 * (np.mean(d[:, 0] ** 2) + np.mean(d[:, 1] ** 2))))
+
+
+def train_one(mode, tr_items, va_items, seed, lr_scale=1.0):
+    """返回 (best_state_dict, best_val_rmse)。lr_scale < 1 用于失败折重训。"""
+    seed_all(seed)
+    model = FoveaNet(mode, CFG["stride"]).to(DEV)
+    opt = torch.optim.AdamW([
+        {"params": model.stem.parameters(), "lr": CFG["lr_backbone"] * lr_scale},
+        {"params": model.head.parameters(), "lr": CFG["lr_head"] * lr_scale},
+    ], weight_decay=CFG["wd"])
+
+    n_warm = min(CFG["warmup"], max(0, CFG["epochs"] // 4))     # 前几个 epoch 线性预热
+    n_cos = max(1, CFG["epochs"] - n_warm)
+    cos = torch.optim.lr_scheduler.CosineAnnealingLR(
+        opt, T_max=n_cos, eta_min=CFG["lr_backbone"] * lr_scale * 0.02)
+    if n_warm > 0:
+        warm = torch.optim.lr_scheduler.LinearLR(opt, start_factor=0.1, total_iters=n_warm)
+        sched = torch.optim.lr_scheduler.SequentialLR(opt, schedulers=[warm, cos], milestones=[n_warm])
+    else:
+        sched = cos
+
+    tr = FoveaDS(tr_items, CFG["img"], CFG["stride"], CFG["sigma"], train=True, seed=seed)
+    dl = DataLoader(tr, batch_size=CFG["batch"], shuffle=True, num_workers=CFG["workers"],
+                    collate_fn=collate, drop_last=len(tr) > CFG["batch"],
+                    generator=torch.Generator().manual_seed(seed))
+
+    va_xy = np.array([[va_items[i]["x"], va_items[i]["y"]] for i in range(len(va_items))])
+    best, best_state, bad = 1e18, None, 0
+
+    for ep in range(CFG["epochs"]):
+        model.train()
+        tot, n = 0.0, 0
+        for xb, hb, pb, _ in dl:
+            xb, hb, pb = xb.to(DEV), hb.to(DEV), pb.to(DEV)
+            opt.zero_grad(set_to_none=True)
+            o = model(xb)
+            if mode == "heat":
+                logits = o["heat"]
+                hm = torch.sigmoid(logits)
+                xy = (soft_argmax(hm) + 0.5) * CFG["stride"]
+                # BCE-with-logits：对“该是背景却给了高响应”的惩罚是指数级的，
+                # 不会像 MSE 那样把整张热力图压平后梯度消失
+                loss = F.binary_cross_entropy_with_logits(logits, hb) + \
+                    1.0 * F.l1_loss(xy / CFG["img"], pb / CFG["img"])
+            else:
+                xy = o["xy"] * CFG["img"]
+                loss = F.l1_loss(xy / CFG["img"], pb / CFG["img"])
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+            opt.step()
+            tot += float(loss) * len(xb); n += len(xb)
+        sched.step()
+
+        val = infer(model, va_items, CFG["img"], tta=CFG["tta"])
+        vr = rmse_xy(val, va_xy)
+        if vr < best - 1e-6:
+            best, bad = vr, 0
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        else:
+            bad += 1
+        if (ep + 1) % max(1, CFG["epochs"] // 5) == 0 or ep == 0:
+            print(f"    ep {ep+1:3d}/{CFG['epochs']}  loss {tot/n:.4f}  "
+                  f"val RMSE {vr:7.2f}  best {best:7.2f}")
+        if bad >= CFG["patience"]:
+            print(f"    早停于 epoch {ep+1}")
+            break
+
+    return best_state, best
+
+# %% [markdown]
+# ## 6. 分折训练
+#
+# 按「图像尺寸」分层做 5 折（数据里有 5 张 1956×1934 的方块图，随机分可能全挤到一折）。
+# 每个 seed 跑全部 5 折；heat 头用 3 个 seed，集成时在**热力图层面**平均后再解码，
+# reg 头只跑 1 个 seed（它只是融合里的配角）。
+
+# %%
+gt["id"] = gt["ImageId"]
+size_bucket = (gt.w.astype(str) + "x" + gt.h.astype(str)).astype("category").cat.codes.values
+skf = StratifiedKFold(n_splits=CFG["folds"], shuffle=True, random_state=CFG["seed"])
+splits = list(skf.split(np.zeros(len(gt)), size_bucket))
+
+train_items = make_items(gt, CFG["img"])
+test_df = pd.DataFrame({"id": test_ids, "path": test_paths})
+test_df[["w", "h"]] = [list(img_size(p)) for p in test_df["path"]]
+test_df["x"], test_df["y"] = 0.0, 0.0
+test_items = make_items(test_df, CFG["img"])
+print("缓存完成: train %d 张, test %d 张" % (len(train_items), len(test_items)))
+
+gt_xy = gt[["x", "y"]].values
+N, M = len(gt), len(test_ids)
+hs = CFG["img"] // CFG["stride"]
+covered = np.zeros(N, bool)
+
+oof = {m: np.zeros((N, 2)) for m in CFG["modes"]}
+test_pred = {m: np.zeros((M, 2)) for m in CFG["modes"]}
+per_seed = {m: {} for m in CFG["modes"]}      # mode -> seed -> (oof, test, 各折 best)
+fold_rmse = {m: [] for m in CFG["modes"]}
+
+for mode in CFG["modes"]:
+    seeds = CFG["seeds_by_mode"][mode]
+    print(f"\n===== mode = {mode} | seeds = {list(seeds)} =====")
+
+    for seed in seeds:
+        hm_sum = np.zeros((N, hs, hs), np.float32) if mode == "heat" else None
+        hm_cnt = np.zeros(N, np.float32) if mode == "heat" else None
+        hm_te = np.zeros((M, hs, hs), np.float32) if mode == "heat" else None
+        xy_oof = np.zeros((N, 2))
+        xy_test = np.zeros((M, 2))
+        bests = []
+
+        for fold, (tri, vai) in enumerate(splits[:CFG["max_folds"]]):
+            t0 = time.time()
+            tr_items = [train_items[i] for i in tri]
+            va_items = [train_items[i] for i in vai]
+            print(f"  seed {seed} fold {fold}  train={len(tr_items)} val={len(va_items)}")
+            fseed = seed * 100 + fold
+            state, best = train_one(mode, tr_items, va_items, fseed)
+            if best > RETRY_THRESH.get(mode, 1e9):
+                print(f"    seed {seed} fold {fold} 首次 {best:.1f} px 超过阈值 "
+                      f"{RETRY_THRESH[mode]:.0f}，降低 lr 重训一次")
+                st2, b2 = train_one(mode, tr_items, va_items, fseed + 500, lr_scale=0.4)
+                if b2 < best:
+                    state, best = st2, b2
+                print(f"    重训结果 {b2:.1f} px → 采用 {best:.1f} px")
+
+            model = FoveaNet(mode, CFG["stride"]).to(DEV)
+            model.load_state_dict(state)
+
+            if mode == "heat":
+                idx_va, hm_va = infer_heatmaps(model, va_items, CFG["img"], tta=CFG["tta"])
+                gi = vai[np.asarray(idx_va, dtype=int)]
+                hm_sum[gi] += hm_va
+                hm_cnt[gi] += 1
+                _, hm_t = infer_heatmaps(model, test_items, CFG["img"], tta=CFG["tta"])
+                hm_te += hm_t
+            else:
+                xy_oof[vai] = infer(model, va_items, CFG["img"], tta=CFG["tta"])
+                xy_test += infer(model, test_items, CFG["img"], tta=CFG["tta"])
+
+            bests.append(best)
+            covered[vai] = True
+            print(f"  seed {seed} fold {fold}  best val RMSE = {best:.2f} px  ({time.time()-t0:.1f}s)")
+            del model
+            if DEV.type == "cuda":
+                torch.cuda.empty_cache()
+
+        # 这一 seed 的 OOF / 测试集预测
+        if mode == "heat":
+            idx = np.where(hm_cnt > 0)[0]
+            xy_oof[idx] = decode_heatmaps(hm_sum[idx] / hm_cnt[idx, None, None],
+                                          [train_items[i] for i in idx])
+            xy_test = decode_heatmaps(hm_te / len(splits[:CFG["max_folds"]]), test_items)
+        else:
+            xy_test /= len(splits[:CFG["max_folds"]])
+
+        per_seed[mode][seed] = (xy_oof, xy_test, bests)
+        oof[mode] += xy_oof / len(seeds)
+        test_pred[mode] += xy_test / len(seeds)
+        fold_rmse[mode].extend(bests)
+        print(f"  [seed {seed}] OOF RMSE = {rmse_xy(xy_oof[covered], gt_xy[covered]):.2f} px")
+
+    singles = ", ".join(f"{s}:{rmse_xy(v[0][covered], gt_xy[covered]):.2f}"
+                        for s, v in per_seed[mode].items())
+    print(f"[{mode}] 单 seed: {singles}")
+    print(f"[{mode}] {len(seeds)} seed 集成 CV RMSE = "
+          f"{rmse_xy(oof[mode][covered], gt_xy[covered]):.2f} px")
+
+# %% [markdown]
+# ## 7. 融合 + 提交 + 逐图误差诊断
+#
+# 只跑 `heat` 时不需要融合；两种头都跑时在 OOF 上网格搜索权重 `w`（`pred = w*reg + (1-w)*heat`）。
+# 最后会把每张训练图的预测/GT/误差和外观指标写成 `oof_detail.csv`，用来找出拖后腿的图。
+
+# %%
+best_w, best_cv = None, 1e18
+if len(CFG["modes"]) == 2:
+    for w in np.arange(0, 1.0001, 0.05):
+        cv = rmse_xy((w * oof["reg"] + (1 - w) * oof["heat"])[covered], gt_xy[covered])
+        if cv < best_cv:
+            best_cv, best_w = cv, float(w)
+    print(f"最优融合权重 w(reg) = {best_w:.2f} | 融合后 OOF RMSE = {best_cv:.2f} px")
+    test_xy = best_w * test_pred["reg"] + (1 - best_w) * test_pred["heat"]
+    final_oof = best_w * oof["reg"] + (1 - best_w) * oof["heat"]
+else:
+    m = CFG["modes"][0]
+    best_cv = rmse_xy(oof[m][covered], gt_xy[covered])
+    test_xy, final_oof = test_pred[m], oof[m]
+    print(f"[{m}] OOF RMSE = {best_cv:.2f} px")
+
+print("\n各 seed 各折 best RMSE:")
+for m in CFG["modes"]:
+    for s, (_, _, bs) in per_seed[m].items():
+        print(f"  {m:4s} seed {s}: " + ", ".join(f"{v:.1f}" for v in bs))
+print("整体 OOF RMSE: %.2f px  （常数均值基线约 %.1f px）" % (best_cv, base_rmse))
+
+err = np.linalg.norm(final_oof[covered] - gt_xy[covered], axis=1)
+
+
+def image_stats(img_rgb):
+    """眼底图外观指标：亮度、对比度、清晰度（只在非黑区域内统计）。"""
+    g = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    m = g > 12
+    if m.sum() < 100:
+        return 0.0, 0.0, 0.0
+    gg = g[m] / 255.0
+    lap = cv2.Laplacian(g, cv2.CV_32F)
+    return float(gg.mean()), float(gg.std()), float(lap[m].var())
+
+
+idx_cov = np.where(covered)[0]
+det = pd.DataFrame({
+    "id": [gt.ImageId[i] for i in idx_cov],
+    "dx": (final_oof[idx_cov, 0] - gt_xy[idx_cov, 0]).round(1),
+    "dy": (final_oof[idx_cov, 1] - gt_xy[idx_cov, 1]).round(1),
+    "dist": err.round(1),
+    "w": [train_items[i]["w"] for i in idx_cov],
+    "h": [train_items[i]["h"] for i in idx_cov],
+    "nx": (gt_xy[idx_cov, 0] / np.array([train_items[i]["w"] for i in idx_cov])).round(3),
+    "ny": (gt_xy[idx_cov, 1] / np.array([train_items[i]["h"] for i in idx_cov])).round(3),
+})
+stats = [image_stats(train_items[i]["img"]) for i in idx_cov]
+det["brightness"], det["contrast"], det["sharpness"] = [s[0] for s in stats], [s[1] for s in stats], [s[2] for s in stats]
+det = det.sort_values("dist", ascending=False).reset_index(drop=True)
+det.to_csv("oof_detail.csv", index=False)
+
+print("\n误差最大的 10 张:")
+print(det.head(10).to_string(index=False))
+print("\n按尺寸分组的平均误差: ")
+print(det.assign(size=det.w.astype(str) + "x" + det.h.astype(str))
+         .groupby("size")["dist"].agg(["count", "mean", "max"]).round(1).to_string())
+print(f"\n已写出 oof_detail.csv（{len(det)} 行，含亮度/对比度/清晰度，可用于找规律）")
+
+# %% [markdown]
+# ### 关于“中央凹不可见 → (0,0)”
+#
+# 训练集 80 张全部可见（GT 里没有 (0,0)），所以模型学不到“不可见”这个概念。
+# 本 notebook 默认全部输出预测坐标。若确认测试集里有不可见的图，可以打开下面的开关：
+# 预测点被裁剪到图像边缘 / 落在成像区域之外时输出 (0,0)。
+#
+# 注意：误判一张可见图为 (0,0)，RMSE 会涨 300~400，**默认关闭**。
+
+# %%
+UNSEEN_RULE = False   # ← 确认存在不可见样本时改成 True
+
+if UNSEEN_RULE:
+    applied = 0
+    for i, (x, y) in enumerate(test_xy):
+        w_i, h_i = test_df.loc[i, ["w", "h"]]
+        if (x <= 1 and y <= 1) or (x >= w_i - 2 and y >= h_i - 2):
+            test_xy[i] = [0.0, 0.0]
+            applied += 1
+    print(f"unseen rule 已应用，置零 {applied} 张")
+
+# %% [markdown]
+# ### 写 submission.csv
+#
+# 严格按 `sample_submission.csv` 的行顺序：`ImageID = 图片名_Fovea_X` / `图片名_Fovea_Y`，两行一组。
+
+# %%
+sample = pd.read_csv(ROOT / "sample_submission.csv")
+pred_map = {}
+for i, tid in enumerate(test_ids):
+    # sample_submission 里的图片名可能是 "81"，文件名是 "0081.jpg"，两种都登记
+    for key in {tid, str(int(tid))}:
+        pred_map[f"{key}_Fovea_X"] = float(test_xy[i, 0])
+        pred_map[f"{key}_Fovea_Y"] = float(test_xy[i, 1])
+
+sub = sample.copy()
+missing = [k for k in sample.ImageID if k not in pred_map]
+assert not missing, f"提交样例里有未覆盖的 ImageID: {missing[:5]}"
+sub["value"] = sub["ImageID"].map(pred_map)
+assert sub["value"].notna().all() and len(sub) == 2 * len(test_ids)
+
+out_path = Path("submission.csv")
+sub.to_csv(out_path, index=False, float_format="%.6f")
+print(sub.head(8).to_string(index=False))
+print("\n写出:", out_path.resolve(), "| 行数:", len(sub))
+
+if Path("/kaggle/working").is_dir():
+    sub.to_csv("/kaggle/working/submission.csv", index=False, float_format="%.6f")
+    print("已复制到 /kaggle/working/submission.csv")
+
+print("\n预测 X: %.1f ~ %.1f   Y: %.1f ~ %.1f" % (test_xy[:, 0].min(), test_xy[:, 0].max(),
+                                                 test_xy[:, 1].min(), test_xy[:, 1].max()))
+print("训练 GT 范围  X: %.1f ~ %.1f   Y: %.1f ~ %.1f" % (gt.x.min(), gt.x.max(), gt.y.min(), gt.y.max()))
+
+# %% [markdown]
+# ## 8. 下一步可以怎么调
+#
+# 1. **换更强的骨干**：`resnet18` → `resnet34` / `efficientnet_b0`，数据量小，提升有限但可试。
+# 2. **多尺度输入**：把 `CFG['img']` 改成 640 再跑一遍，与 512 的结果加权融合。
+# 3. **伪标签**：用 5 折集成给测试集打伪标签，把高置信样本加入训练再微调一轮。
+# 4. **两阶段**：先粗定位（256 输入），再以预测点为中心裁 256×256 放到 512 输入做精细回归。
+# 5. **提交策略**：每天 5 次，先交本 notebook 的结果看榜，再用不同 `seed` / `img` 的版本做保守融合。
