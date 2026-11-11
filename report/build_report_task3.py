@@ -31,7 +31,7 @@ from docx.shared import Cm, Pt, RGBColor
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 仓库根目录
 FIG = os.path.join(HERE, "report", "figures")
 DATA = os.path.join(HERE, "raw", "detection")
-OUT = os.path.join(HERE, "report", "任务三_眼底黄斑定位_实验报告.docx")
+OUT = os.path.join(HERE, "report", "任务三_眼底黄斑定位_实验报告_完整版.docx")
 GITHUB_URL = "https://github.com/DaoTongx/fovea-localization"
 os.makedirs(FIG, exist_ok=True)
 

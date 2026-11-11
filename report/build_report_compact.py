@@ -17,7 +17,7 @@ from build_report_task3 import (
     set_run_font, setup_font,
 )
 
-OUT = os.path.join(HERE, "report", "任务三_眼底黄斑定位_实验报告_精简版.docx")
+OUT = os.path.join(HERE, "report", "任务三_眼底黄斑定位_实验报告.docx")
 
 # 精简后的版本表：只保留关键信息
 VER_ROWS = [

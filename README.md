@@ -41,7 +41,7 @@ v4 / v5 / v6 的逐图误差明细保存在 `results/` 下，可直接复算报�
 ```
 src/          fovea_localization.py   主流程（与 notebook 内容一致）
 notebooks/    fovea_localization.ipynb Kaggle 上直接运行
-report/       实验报告（14 页完整版 / 6 页精简版）+ 构建脚本 + 全部插图
+report/       实验报告（6 页）+ 构建脚本 + 全部插图
 logs/         v1（崩溃）与 v3（修复后）两次训练日志
 results/      三次运行的逐图 OOF 明细与提交文件
 tools/        analyze.py  误差归因分析
@@ -86,12 +86,14 @@ python src/fovea_localization.py
 python tools/analyze.py results/v6_640_3seed/oof_detail.csv
 ```
 
-**重新生成报告**（需要数据与上述 results）：
+**重新生成报告**：
 
 ```bash
-python report/build_report_task3.py     # 完整版（14 页，9 图 6 表）
-python report/build_report_compact.py   # 精简版（6 页，4 图 3 表）
+python report/build_report_compact.py   # 正文报告（6 页，4 图 3 表）
+python report/build_report_task3.py     # 扩展版（14 页，9 图 6 表，需 raw 数据）
 ```
+
+> 注意：扩展版输出为 `..._完整版.docx`，不会覆盖正文报告。
 
 ## 说明
 
